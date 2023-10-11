@@ -50,10 +50,19 @@ fviz_pca_var(data.pca, col.var = "cos2", repel = TRUE, axes = c(1, 2))
 
 ################# Linear Regression ################# 
 bf_lm <- lm(BODYFAT ~. -IDNO -DENSITY -calc_BODYFAT -calc_BMI, data = bodyFat) # Base linear model
-bf_lm_1 <- lm(BODYFAT ~ ABDOMEN, data = bodyFat) # linear model with just abdomen (compare against decision tree)
-
 summary(bf_lm)
-summary(bf_lm_1)
+
+bf_y <- bodyFat %>% filter(AGE_GROUP == "Y")
+bf_lm_y <- lm(BODYFAT ~ ABDOMEN + WRIST,data = bf_y)
+bf_m <- bodyFat %>% filter(AGE_GROUP == "M")
+bf_lm_m <- lm(BODYFAT ~ ABDOMEN + WRIST,data = bf_y)
+
+bf_lm_o <- bodyFat %>% filter(AGE_GROUP == "O") 
+bf_lm_m <- lm(BODYFAT ~ ABDOMEN + WRIST,data = bf_y)
+
+summary(bf_lm_y)
+summary(bf_lm_m)
+summary(bf_lm_o)
 
 
 ################# Decision Tree ################# 
@@ -68,8 +77,16 @@ obj_tree <- rpart(BODYFAT ~ . -IDNO -DENSITY -calc_BODYFAT,
                   method = "anova",
                   control = rpart.control(minbucket = 5, cp=0.0001), 
                   data = train)
+
+basic_tree <- rpart(BODYFAT ~ . -IDNO -DENSITY -calc_BODYFAT -AGE, 
+                    method = "anova",
+                    data = train)
+rpart.plot(basic_tree)
+cor(predict(basic_tree, newdata=test), test$BODYFAT)^2
+
 rsq.rpart(obj_tree)
 plotcp(obj_tree)
+rpart.plot(obj_tree)
 
 CP <- obj_tree$cptable[,1]
 cp.opt <- CP[which.min(cptable[,4])]

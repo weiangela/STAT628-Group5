@@ -19,21 +19,14 @@ ui <- fluidPage(# Application title
     sidebarPanel(
       h2("Where did you land amongst study participants?"),
       p("If you are an adult male, please enter in your body dimensions in!"),
-      strong(
-        "Abdomen circumference in cm",
+      strong("Abdomen circumference in cm",
         tooltip(
           bsicons::bs_icon("question-circle"),
           "Wrap a measuring tape tightly around your abdomen around where your belly button is.",
           placement = "right"
         )
       ),
-      sliderInput(
-        "ab",
-        "",
-        min = 50,
-        max = floor(max(bodyFat$ABDOMEN)),
-        value = 90
-      ),
+      sliderInput("ab","", min = 50, max = floor(max(bodyFat$ABDOMEN)), value = 90),
       strong(
         "Wrist circumference in cm",
         tooltip(
@@ -54,9 +47,7 @@ ui <- fluidPage(# Application title
     
     # Show a plot of the generated distribution
     mainPanel(
-      p(
-        "Within the study performed in 1970, 252 adult males had their body dimensions measured to correlate values with body fat percentage."
-      ),
+      p("Within the study performed in 1970, 252 adult males had their body dimensions measured to correlate values with body fat percentage."),
       plotOutput("abPlot"),
       plotOutput("p2Plot")
     )
