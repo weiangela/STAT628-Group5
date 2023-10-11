@@ -4,19 +4,34 @@ library(corrplot)
 library(factoextra)
 library(rpart)
 library(rpart.plot)
+library(haven)
 
 bodyFat <- read.csv("https://raw.githubusercontent.com/weiangela/STAT628-Group5/main/BodyFat.csv")
 
-# convert all units to metric
+################# Data Cleaning #################
+bodyFat <- bodyFat %>% filter(BODYFAT > 3, HEIGHT > 60)
 
-bodyFat$calc_BODYFAT <- 495/bodyFat$DENSITY - 450
-bodyFat$calc_BMI <- bodyFat$HEIGHT / (bodyFat$WEIGHT^2)
+# convert all units to metric
 bodyFat$WEIGHT <- bodyFat$WEIGHT / 2.20462  # kg
 bodyFat$HEIGHT <- bodyFat$HEIGHT * 2.54     # cm
 
-# data exploration
-summary(bodyFat)
+# Create calculation fields to compare estimations to actual values (verify they were entered correctly)
+bodyFat$calc_BODYFAT <- 495/bodyFat$DENSITY - 450
+bodyFat$calc_BMI <- bodyFat$HEIGHT / (bodyFat$WEIGHT^2)
 
+# Differentiate study participants by ages
+bodyFat$AGE_GROUP <- "Y"
+bodyFat[(bodyFat$AGE >= 35) & (bodyFat$AGE < 60), ]$AGE_GROUP <- "M"
+bodyFat[bodyFat$AGE > 60, ]$AGE_GROUP <- "O"
+
+#################Data exploration #################
+
+# histograms of all data
+library(Hmisc)
+bodyFat %>% select(-IDNO) %>% hist.data.frame()
+bodyFat %>% select(-IDNO) %>% summary()
+
+# correlation plots
 norm_bodyFat <- as.data.frame(scale(bodyFat[, 2:17]))
 
 corr_matrix <- norm_bodyFat %>% 
@@ -24,7 +39,7 @@ corr_matrix <- norm_bodyFat %>%
   cor()
 corrplot(corr = corr_matrix, method = "color") # base correlation plots
 
-# PCA
+################# PCA ################# 
 data.pca <- princomp(corr_matrix)
 summary(data.pca)
 data.pca$loadings[, 1:4]
@@ -33,61 +48,46 @@ fviz_eig(data.pca, addlabels = TRUE) # scree plot shows that PC 1 and 2 represen
 fviz_cos2(data.pca, choice = "var", axes = 1:2)
 fviz_pca_var(data.pca, col.var = "cos2", repel = TRUE, axes = c(1, 2))
 
-# TODO: DEFINE GOOD VS. GREAT LEVELS OF PRECISION FOR ACCURACY AND ROBUSTNESS
-# NOTE: GOOD MODELS TEND TO HAVE R^2 AROUND 0.75
-
-# compare age distribution curve to overall US population age distribution 
-# curve to assess if group is generally representative
-# might be good to do weighted least squares where the weight is % of us population at that age
-ggplot(bodyFat) + geom_histogram(aes(x = AGE))
-ggplot(bodyFat) + geom_histogram(aes(x = ABDOMEN))
-ggplot(bodyFat) + geom_histogram(aes(x = WEIGHT))
-
-# probably gonna have to use linear regression
-bf_lm <- lm(BODYFAT ~. -IDNO -DENSITY -calc_BODYFAT -calc_BMI, data = bodyFat)
-bf_lm_1 <- lm(BODYFAT ~ AGE + THIGH + HIP, data = bodyFat)
+################# Linear Regression ################# 
+bf_lm <- lm(BODYFAT ~. -IDNO -DENSITY -calc_BODYFAT -calc_BMI, data = bodyFat) # Base linear model
+bf_lm_1 <- lm(BODYFAT ~ ABDOMEN, data = bodyFat) # linear model with just abdomen (compare against decision tree)
 
 summary(bf_lm)
 summary(bf_lm_1)
 
-bf_lm_2 <- lm(BODYFAT ~ AGE + NECK + ABDOMEN + FOREARM + WRIST, data = bodyFat)
-summary(bf_lm_2)
 
-bodyFat$AGE_GROUP <- "Y"
-bodyFat[(bodyFat$AGE >= 35) & (bodyFat$AGE < 60), ]$AGE_GROUP <- "M"
-bodyFat[bodyFat$AGE > 60, ]$AGE_GROUP <- "O"
-
-y_bf_lm <- lm(BODYFAT ~ . -IDNO -DENSITY -calc_BODYFAT -calc_BMI, data = y_bodyFat)
-summary(y_bf_lm)
-
-
-ab_lm <- lm(BODYFAT ~ ABDOMEN, data = bodyFat)
-summary(ab_lm)
-# In the shiny app, maybe have a BMI calculator that updates graphics based on their data
-
-# PCA Analysis 
-
-# Decision Tree
+################# Decision Tree ################# 
+set.seed(123)
 n <- dim(bodyFat)[1]
-ind <- sample(1:n, size = n/2)
+ind <- sample(1:n, size = n * 0.75)
 
 train <- bodyFat[ind,]
 test <- bodyFat[-ind,]
 
-obj_tree <- rpart(BODYFAT ~ . -IDNO -DENSITY, 
-                  control = rpart.control(xval = 10, minbucket = 5), 
+obj_tree <- rpart(BODYFAT ~ . -IDNO -DENSITY -calc_BODYFAT, 
+                  method = "anova",
+                  control = rpart.control(minbucket = 5, cp=0.0001), 
                   data = train)
-rpart.plot(obj_tree)
-printcp(obj_tree)
+rsq.rpart(obj_tree)
+plotcp(obj_tree)
 
-cptable <- obj_tree$cptable
-# complexity parameter values
-CP <- cptable[,1]
-# obtain the optimal parameter
+CP <- obj_tree$cptable[,1]
 cp.opt <- CP[which.min(cptable[,4])]
-# Prune the tree 
-fit <- prune(obj_tree, cp = cp.opt)
-# plot the pruned tree structure
-rpart.plot(fit)
-printcp(fit)
 
+# Prune the tree 
+fit <- prune(obj_tree, cp = cp.opt, minbucket = 4)
+rpart.plot(fit)
+
+# Correlation Coefficient
+cor(predict(fit, newdata=test), test$BODYFAT)^2
+cor(predict(bf_lm, newdata=test), test$BODYFAT)^2
+cor(predict(bf_lm_1, newdata=test), test$BODYFAT)^2
+
+
+################# TO DO ################# 
+# TODO: DEFINE GOOD VS. GREAT LEVELS OF PRECISION FOR ACCURACY AND ROBUSTNESS
+# NOTE: GOOD MODELS TEND TO HAVE R^2 AROUND 0.75
+# In the shiny app, maybe have a BMI calculator that updates graphics based on their data
+# compare age distribution curve to overall US population age distribution 
+# curve to assess if group is generally representative
+# might be good to do weighted least squares where the weight is % of us population at that age
