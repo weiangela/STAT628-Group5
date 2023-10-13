@@ -2,38 +2,34 @@ library(tidyverse)
 library(ggplot2)
 library(corrplot)
 library(factoextra)
-library(rpart)
-library(rpart.plot)
 library(haven)
+library(leaps)
+library(Hmisc)
 
 bodyFat <- read.csv("https://raw.githubusercontent.com/weiangela/STAT628-Group5/main/BodyFat.csv")
 
 ################# Data Cleaning #################
-bodyFat <- bodyFat %>% filter(BODYFAT > 3, HEIGHT > 60)
-
 # convert all units to metric
 bodyFat$WEIGHT <- bodyFat$WEIGHT / 2.20462  # kg
 bodyFat$HEIGHT <- bodyFat$HEIGHT * 2.54     # cm
+
+#Cutting out unreasonable values and outliers to ensure normality assumption
+bodyFat <- bodyFat %>% filter(BODYFAT > 3, HEIGHT > 90, WEIGHT < 160, 
+                              ADIPOSITY < 45, NECK < 50, ABDOMEN < 140, 
+                              HIP < 140, THIGH < 80, KNEE < 47, 
+                              ANKLE < 32, BICEPS < 42)
 
 # Create calculation fields to compare estimations to actual values (verify they were entered correctly)
 bodyFat$calc_BODYFAT <- 495/bodyFat$DENSITY - 450
 bodyFat$calc_BMI <- bodyFat$HEIGHT / (bodyFat$WEIGHT^2)
 
-# Differentiate study participants by ages
-bodyFat$AGE_GROUP <- "Y"
-bodyFat[(bodyFat$AGE >= 35) & (bodyFat$AGE < 60), ]$AGE_GROUP <- "M"
-bodyFat[bodyFat$AGE > 60, ]$AGE_GROUP <- "O"
-
 #################Data exploration #################
-
 # histograms of all data
-library(Hmisc)
 bodyFat %>% select(-IDNO) %>% hist.data.frame()
-bodyFat %>% select(-IDNO) %>% summary()
+norm_bodyFat <- as.data.frame(scale(bodyFat[, 2:17]))
+norm_bodyFat %>% hist.data.frame()
 
 # correlation plots
-norm_bodyFat <- as.data.frame(scale(bodyFat[, 2:17]))
-
 corr_matrix <- norm_bodyFat %>% 
   select(-HEIGHT, -WEIGHT, -DENSITY, -BODYFAT) %>%
   cor()
@@ -49,21 +45,16 @@ fviz_cos2(data.pca, choice = "var", axes = 1:2)
 fviz_pca_var(data.pca, col.var = "cos2", repel = TRUE, axes = c(1, 2))
 
 ################# Linear Regression ################# 
-bf_lm <- lm(BODYFAT ~. -IDNO -DENSITY -calc_BODYFAT -calc_BMI, data = bodyFat) # Base linear model
-summary(bf_lm)
+bf_lm <- lm(BODYFAT ~. -IDNO -DENSITY -calc_BODYFAT, data = bodyFat) # Base linear model
+best_subset <- regsubsets(BODYFAT ~. -IDNO -DENSITY -calc_BODYFAT, data = bodyFat, 
+                          nbest = 1, nvmax = NULL, force.in = NULL, force.out = NULL, 
+                          method = "exhaustive")
+summary_best_subset <- summary(best_subset)
+as.data.frame(summary_best_subset$adjr2)
+summary_best_subset$which[2,]
 
-bf_y <- bodyFat %>% filter(AGE_GROUP == "Y")
-bf_lm_y <- lm(BODYFAT ~ ABDOMEN + WRIST,data = bf_y)
-bf_m <- bodyFat %>% filter(AGE_GROUP == "M")
-bf_lm_m <- lm(BODYFAT ~ ABDOMEN + WRIST,data = bf_y)
-
-bf_lm_o <- bodyFat %>% filter(AGE_GROUP == "O") 
-bf_lm_m <- lm(BODYFAT ~ ABDOMEN + WRIST,data = bf_y)
-
-summary(bf_lm_y)
-summary(bf_lm_m)
-summary(bf_lm_o)
-
+best_bf_lm <- lm(BODYFAT ~ ABDOMEN + WEIGHT, data = bodyFat)
+summary(best_bf_lm)
 
 ################# Decision Tree ################# 
 set.seed(123)
